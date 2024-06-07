@@ -1,0 +1,67 @@
+#Code for example of meal distribution contol system compatible for database management system (DBMS) like SQLite, MySQL, or PostgreSQL
+
+import sqlite3
+from datetime import datetime, timedelta
+
+
+class EventManager:
+    def __init__(self, db_path='event_database.db'): #evet_database.db is example
+        self.db_path = db_path
+        self.create_tables()
+
+    def create_tables(self):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS attendees (
+                    name TEXT PRIMARY KEY,
+                    attending_day INTEGER,
+                    morning_meals INTEGER DEFAULT 0,
+                    afternoon_meals INTEGER DEFAULT 0,
+                    night_meals INTEGER DEFAULT 0,
+                    last_session_time TEXT
+                )
+            ''')
+            conn.commit()
+
+    def register_attendee(self, name, attending_day):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR IGNORE INTO attendees (name, attending_day) VALUES (?, ?)
+            ''', (name, attending_day))
+            conn.commit()
+
+    def can_redeem_meal(self, name, session):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM attendees WHERE name=?', (name,))
+            attendee = cursor.fetchone()
+
+            if attendee:
+                current_time = datetime.now()
+                last_session_time = datetime.strptime(attendee[5], '%Y-%m-%d %H:%M:%S.%f') if attendee[5] else None
+
+                if last_session_time is None or current_time - last_session_time > timedelta(hours=3):
+                    return attendee[1] == current_time.day and attendee[2 + ['morning', 'afternoon', 'night'].index(session)] < 2
+
+        return False
+
+    def redeem_meal(self, name, session):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            if self.can_redeem_meal(name, session):
+                cursor.execute(f'UPDATE attendees SET {session}_meals = {session}_meals + 1, last_session_time = ? WHERE name = ?', (datetime.now(), name))
+                conn.commit()
+                return f"{name} redeemed a meal for {session} session."
+            else:
+                return f"{name} cannot redeem a meal for {session} session."
+
+# Example usage:
+event_manager = EventManager()
+
+# Simulating the code for even
+event_manager.register_attendee("Bryan", 19)  # Bryan will attend on the 19th day of the month
+print(event_manager.redeem_meal("Bryan", "AM Teabreak"))
+print(event_manager.redeem_meal("Bryan", "Lunch"))
+print(event_manager.redeem_meal("Bryan", "PM Teabreak"))
